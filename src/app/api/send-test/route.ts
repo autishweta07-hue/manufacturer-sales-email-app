@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireAppAuth } from '@/lib/auth';
 import { sendingEnabled } from '@/lib/config';
+import { deckRequested, loadSalesDeckAttachment } from '@/lib/deck';
 import { createTransporter, deliverEmail, renderEmail } from '@/lib/email';
 import { campaignToken } from '@/lib/email';
 import { readState } from '@/lib/store';
@@ -15,7 +16,8 @@ const schema = z.object({
   subject: z.string().min(1),
   body: z.string().min(1),
   deckMode: z.enum(['none', 'link', 'file']),
-  deckUrl: z.string().default('')
+  deckUrl: z.string().default(''),
+  deckFileId: z.string().optional()
 });
 
 export async function POST(request: Request) {
@@ -38,6 +40,7 @@ export async function POST(request: Request) {
       body: input.body,
       deckMode: input.deckMode,
       deckUrl: input.deckUrl,
+      deckFileId: input.deckFileId,
       leadIds: [lead.id],
       batchSize: 1,
       delayMs: 0,
@@ -51,8 +54,9 @@ export async function POST(request: Request) {
     if (rendered.unresolved.length > 0) {
       return NextResponse.json({ error: `Unresolved placeholders: ${rendered.unresolved.join(', ')}` }, { status: 422 });
     }
+    const attachment = deckRequested(stub) ? await loadSalesDeckAttachment(stub, state) : undefined;
     const transporter = createTransporter();
-    const result = await deliverEmail(transporter, rendered, input.to);
+    const result = await deliverEmail(transporter, rendered, input.to, attachment);
     return NextResponse.json({ messageId: result.messageId, to: input.to });
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: 'Enter a valid test email address' }, { status: 400 });

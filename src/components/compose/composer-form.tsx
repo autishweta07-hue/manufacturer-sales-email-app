@@ -28,18 +28,24 @@ interface Deck {
 
 export function ComposerForm({ leads, decks }: { leads: EligibleLead[]; decks: Deck[] }) {
   const router = useRouter();
-  const [draft, setDraft] = useState<CampaignDraft>(DEFAULT_CAMPAIGN_DRAFT);
+  const [draft, setDraft] = useState<CampaignDraft>(() => ({
+    ...DEFAULT_CAMPAIGN_DRAFT,
+    deckFileId: decks[0]?.id ?? ''
+  }));
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const deckFile = useRef<HTMLInputElement>(null);
+  const initialDecks = useRef(decks);
 
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(DRAFT_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as CampaignDraft;
-        setDraft({ ...DEFAULT_CAMPAIGN_DRAFT, ...parsed });
+        const restored = { ...DEFAULT_CAMPAIGN_DRAFT, ...parsed, deckMode: 'file' as const };
+        if (!restored.deckFileId && initialDecks.current.length > 0) restored.deckFileId = initialDecks.current[0].id;
+        setDraft(restored);
       }
     } catch {
       window.localStorage.removeItem(DRAFT_KEY);
@@ -68,9 +74,7 @@ export function ComposerForm({ leads, decks }: { leads: EligibleLead[]; decks: D
     if (!draft.subject.trim()) return 'Add a subject line';
     if (!draft.body.trim()) return 'Add an email body';
     if (draft.leadIds.length === 0) return 'Select at least one eligible recipient';
-    if (draft.deckMode === 'none') return 'Choose a hosted deck link or upload a deck';
-    if (draft.deckMode === 'link' && !/^https?:\/\//i.test(draft.deckUrl)) return 'Enter a full https:// sales deck link';
-    if (draft.deckMode === 'file' && !draft.deckFileId) return 'Upload a sales deck or choose one already uploaded';
+    if (draft.deckMode !== 'file' || !draft.deckFileId) return 'Choose a PDF sales deck to attach';
     return null;
   }
 
@@ -166,39 +170,27 @@ export function ComposerForm({ leads, decks }: { leads: EligibleLead[]; decks: D
 
         <section className="surface px-5 py-5">
           <h2>Sales deck</h2>
-          <p className="muted mt-1">Use a hosted link for click tracking, or upload a deck for measurable downloads.</p>
-          <div className="mt-4">
-            <Label htmlFor="deck-mode">Sharing method</Label>
-            <Select id="deck-mode" value={draft.deckMode} onChange={(event) => update('deckMode', event.target.value as CampaignDraft['deckMode'])}>
-              <option value="link">Hosted link (click tracked)</option>
-              <option value="file">Uploaded file (download tracked)</option>
-            </Select>
-          </div>
-          {draft.deckMode === 'link' && (
-            <div className="mt-4">
-              <Label htmlFor="deck-url">Deck URL</Label>
-              <Input id="deck-url" placeholder="https://…" value={draft.deckUrl} onChange={(event) => update('deckUrl', event.target.value)} />
-            </div>
-          )}
-          {draft.deckMode === 'file' && (
-            <div className="mt-4 space-y-3">
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="min-w-[240px] flex-1">
-                  <Label htmlFor="deck-file">PDF or PowerPoint</Label>
-                  <Input id="deck-file" ref={deckFile} type="file" accept=".pdf,.ppt,.pptx" />
-                </div>
-                <Button onClick={uploadDeck} disabled={busy}>
-                  <Paperclip size={15} /> Upload deck
-                </Button>
+          <p className="muted mt-1">The sales deck is attached to every email as Sales_Deck.pdf. No external link is included.</p>
+          <div className="mt-4 space-y-3">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-[240px] flex-1">
+                <Label htmlFor="deck-file">Sales deck PDF</Label>
+                <Input id="deck-file" ref={deckFile} type="file" accept=".pdf,application/pdf" />
               </div>
-              <Select value={draft.deckFileId} onChange={(event) => update('deckFileId', event.target.value)}>
+              <Button onClick={uploadDeck} disabled={busy}>
+                <Paperclip size={15} /> Upload deck
+              </Button>
+            </div>
+            <div>
+              <Label htmlFor="deck-select">Choose uploaded deck</Label>
+              <Select id="deck-select" value={draft.deckFileId} onChange={(event) => update('deckFileId', event.target.value)}>
                 <option value="">Choose an uploaded deck…</option>
                 {decks.map((deck) => (
                   <option key={deck.id} value={deck.id}>{deck.filename}</option>
                 ))}
               </Select>
             </div>
-          )}
+          </div>
           <div className="mt-4">
             <Label htmlFor="delay">Delay between batches (ms)</Label>
             <Input

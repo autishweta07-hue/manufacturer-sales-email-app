@@ -8,10 +8,13 @@ export interface PersonalizedText {
 }
 
 export function personalize(template: string, lead: Lead): PersonalizedText {
+  const rawName = String(lead.name ?? '').trim();
+  const rawCompany = String(lead.company ?? '').trim();
+  const rawEmail = String(lead.email ?? '').trim();
   const values: Record<string, string> = {
-    Name: lead.name,
-    Company_Name: lead.company,
-    Email: lead.email
+    Name: rawName && rawName.toLowerCase() !== 'nan' ? rawName : 'there',
+    Company_Name: rawCompany.toLowerCase() === 'nan' ? '' : rawCompany,
+    Email: rawEmail.toLowerCase() === 'nan' ? '' : rawEmail
   };
   const unresolved: string[] = [];
 

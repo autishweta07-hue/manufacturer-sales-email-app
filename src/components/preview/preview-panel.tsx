@@ -3,15 +3,15 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Eye, Send } from 'lucide-react';
+import { Eye, Paperclip, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input, Label, Select } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { DRAFT_KEY, type CampaignDraft } from '@/components/compose/composer-form';
 
 interface LeadOption { id: string; company: string; name: string; email: string }
-interface Preview { subject: string; text: string; unresolved: string[] }
-interface AllPreview { leadId: string; company: string; subject: string; unresolved: string[] }
+interface Preview { subject: string; text: string; unresolved: string[]; attachmentName?: string }
+interface AllPreview { leadId: string; company: string; subject: string; unresolved: string[]; attachmentName?: string }
 
 export function PreviewPanel({ leads, sendingEnabled }: { leads: LeadOption[]; sendingEnabled: boolean }) {
   const router = useRouter();
@@ -143,6 +143,14 @@ export function PreviewPanel({ leads, sendingEnabled }: { leads: LeadOption[]; s
               <div className="mt-1 text-[15px] font-semibold">{preview.subject}</div>
               <div className="eyebrow mt-5">Message</div>
               <pre className="mt-2 whitespace-pre-wrap font-sans text-[13px] leading-relaxed">{preview.text}</pre>
+              {preview.attachmentName && (
+                <div className="mt-4 rounded-[8px] border border-border bg-surface px-3 py-2.5">
+                  <div className="flex items-center gap-2 text-[13px] font-medium">
+                    <Paperclip size={15} /> PDF attachment: {preview.attachmentName}
+                  </div>
+                  <p className="mt-1 text-[12px] text-muted-foreground">Attached to the email as a PDF file, not an external link.</p>
+                </div>
+              )}
               {unresolved.length > 0 && (
                 <div className="mt-4 rounded-[8px] border border-[#e6c9c4] bg-[#f8e8e6] px-3 py-2 text-[12px] text-[#8b332c]">
                   Unresolved placeholders: {unresolved.join(', ')}. Fix the template before sending.
@@ -157,6 +165,7 @@ export function PreviewPanel({ leads, sendingEnabled }: { leads: LeadOption[]; s
                   <div>
                     <div className="text-[13px] font-medium">{item.company}</div>
                     <div className="text-[12px] text-muted-foreground">{item.subject}</div>
+                    {item.attachmentName && <div className="text-[12px] text-muted-foreground">PDF attachment: {item.attachmentName}</div>}
                   </div>
                   {item.unresolved.length > 0 ? <Badge tone="destructive">Unresolved: {item.unresolved.join(', ')}</Badge> : <Badge tone="success">Ready</Badge>}
                 </div>

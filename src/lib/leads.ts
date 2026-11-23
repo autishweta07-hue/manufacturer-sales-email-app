@@ -15,6 +15,8 @@ export interface ParsedWorkbook {
 
 function cellText(value: unknown): string {
   if (value === null || value === undefined) return '';
+  if (typeof value === 'number' && Number.isNaN(value)) return '';
+  if (typeof value === 'string' && value.trim().toLowerCase() === 'nan') return '';
   if (value instanceof Date) return value.toISOString();
   if (typeof value === 'object') {
     const candidate = value as { text?: unknown; richText?: Array<{ text: string }>; hyperlink?: string };

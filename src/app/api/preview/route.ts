@@ -13,7 +13,8 @@ const schema = z.object({
   body: z.string().default(''),
   leadId: z.string().min(1),
   deckMode: z.enum(['none', 'link', 'file']).default('none'),
-  deckUrl: z.string().default('')
+  deckUrl: z.string().default(''),
+  deckFileId: z.string().optional()
 });
 
 export async function POST(request: Request) {
@@ -33,6 +34,7 @@ export async function POST(request: Request) {
       body: input.body,
       deckMode: input.deckMode,
       deckUrl: input.deckUrl,
+      deckFileId: input.deckFileId,
       leadIds: [lead.id],
       batchSize: 1,
       delayMs: 0,
@@ -48,7 +50,8 @@ export async function POST(request: Request) {
       text: rendered.text,
       html: rendered.html,
       unresolved: rendered.unresolved,
-      unsubscribeUrl: rendered.unsubscribeUrl
+      unsubscribeUrl: rendered.unsubscribeUrl,
+      attachmentName: rendered.attachmentName
     });
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: 'Invalid preview request' }, { status: 400 });

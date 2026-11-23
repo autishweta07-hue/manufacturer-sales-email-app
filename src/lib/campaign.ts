@@ -1,4 +1,5 @@
 import { sendingEnabled } from './config';
+import { deckRequested, loadSalesDeckAttachment } from './deck';
 import { createTransporter, deliverEmail, isTransientSmtpError, renderEmail } from './email';
 import { recordEvent } from './events';
 import { mutateState, newId, readState } from './store';
@@ -69,11 +70,12 @@ export async function createCampaign(input: CreateCampaignInput): Promise<Campai
 
 export async function startCampaign(campaignId: string): Promise<void> {
   if (!sendingEnabled()) throw new Error('Sending is disabled. Set ALLOW_SENDING=true only after explicit approval.');
-  await mutateState((state) => {
+  await mutateState(async (state) => {
     const campaign = state.campaigns.find((entry) => entry.id === campaignId);
     if (!campaign) throw new Error('Campaign not found');
     if (campaign.status === 'sending') throw new Error('Campaign is already sending');
     if (campaign.status === 'completed') throw new Error('Campaign has already completed');
+    if (deckRequested(campaign)) await loadSalesDeckAttachment(campaign, state);
     campaign.recipients.forEach((recipient) => {
       if (recipient.sendStatus === 'sending') recipient.sendStatus = 'pending';
       if (recipient.sendStatus === 'sent') recipient.sendStatus = 'sent';
@@ -93,6 +95,7 @@ export async function runCampaign(campaignId: string): Promise<void> {
     const campaign = state.campaigns.find((entry) => entry.id === campaignId);
     if (!campaign || campaign.status !== 'sending') return;
 
+    const attachment = deckRequested(campaign) ? await loadSalesDeckAttachment(campaign, state) : undefined;
     const transporter = createTransporter();
     let processedInBatch = 0;
 
@@ -117,7 +120,7 @@ export async function runCampaign(campaignId: string): Promise<void> {
       } else {
         for (let attempt = 1; attempt <= 3; attempt += 1) {
           try {
-            const result = await deliverEmail(transporter, rendered, recipient.lead.email);
+            const result = await deliverEmail(transporter, rendered, recipient.lead.email, attachment);
             await mutateState((current) => {
               const target = current.campaigns.find((entry) => entry.id === campaignId);
               const item = target?.recipients.find((entry) => entry.leadId === recipient.leadId);
@@ -166,6 +169,21 @@ export async function runCampaign(campaignId: string): Promise<void> {
     await mutateState((current) => {
       const target = current.campaigns.find((entry) => entry.id === campaignId);
       if (!target) return;
+      target.status = 'completed';
+      target.completedAt = new Date().toISOString();
+    });
+  } catch (error) {
+    const message = safeErrorMessage(error);
+    await mutateState((current) => {
+      const target = current.campaigns.find((entry) => entry.id === campaignId);
+      if (!target) return;
+      target.recipients.forEach((recipient) => {
+        if (recipient.sendStatus === 'pending' || recipient.sendStatus === 'sending') {
+          recipient.sendStatus = 'failed';
+          recipient.error = message;
+          recordEvent(current, campaignId, recipient.leadId, 'failed', message, 'attachment');
+        }
+      });
       target.status = 'completed';
       target.completedAt = new Date().toISOString();
     });

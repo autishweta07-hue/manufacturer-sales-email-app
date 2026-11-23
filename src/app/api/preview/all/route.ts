@@ -13,6 +13,7 @@ const schema = z.object({
   body: z.string().default(''),
   deckMode: z.enum(['none', 'link', 'file']).default('none'),
   deckUrl: z.string().default(''),
+  deckFileId: z.string().optional(),
   leadIds: z.array(z.string()).min(1).max(500)
 });
 
@@ -24,6 +25,7 @@ function stub(input: z.infer<typeof schema>): Campaign {
     body: input.body,
     deckMode: input.deckMode,
     deckUrl: input.deckUrl,
+    deckFileId: input.deckFileId,
     leadIds: input.leadIds,
     batchSize: 1,
     delayMs: 0,
@@ -53,7 +55,8 @@ export async function POST(request: Request) {
         email: lead.email,
         subject: rendered.subject,
         body: rendered.body,
-        unresolved: rendered.unresolved
+        unresolved: rendered.unresolved,
+        attachmentName: rendered.attachmentName
       };
     });
     return NextResponse.json({ previews });

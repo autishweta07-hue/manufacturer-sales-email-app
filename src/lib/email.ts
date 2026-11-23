@@ -1,5 +1,6 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import type { Campaign, Lead } from './types';
+import { deckRequested, SALES_DECK_FILENAME, type EmailAttachment } from './deck';
 import { escapeHtml, personalize, textToHtmlParagraphs } from './personalize';
 import { createToken } from './tokens';
 
@@ -10,6 +11,7 @@ export interface RenderedEmail {
   html: string;
   unresolved: string[];
   unsubscribeUrl: string;
+  attachmentName?: string;
 }
 
 export function linkFor(token: string, endpoint: string, appUrl: string, query = ''): string {
@@ -26,21 +28,15 @@ export function renderEmail(campaign: Campaign, lead: Lead, token: string): Rend
   const base = appUrl();
   const unsubscribeUrl = linkFor(token, 'unsubscribe', base);
   const openUrl = linkFor(token, 'open', base);
-  const deckUrl =
-    campaign.deckMode === 'file'
-      ? `${base}/api/track/download/${token}`
-      : campaign.deckMode === 'link'
-        ? linkFor(token, 'click', base)
-        : '';
+  const hasDeck = deckRequested(campaign);
+  const attachmentName = hasDeck ? SALES_DECK_FILENAME : undefined;
   const responseUrl = (response: string) => linkFor(token, 'respond', base, `?r=${response}`);
   const openTracking = process.env.OPEN_TRACKING_ENABLED === 'true';
   const unresolved = Array.from(new Set([...subject.unresolved, ...body.unresolved]));
 
   const text = [
-    subject.value,
-    '',
     body.value,
-    deckUrl ? `\nSales deck: ${deckUrl}` : '',
+    hasDeck ? `\nAttachment: ${SALES_DECK_FILENAME} (PDF file attached to this email)` : '',
     '\nHow would you like to proceed?',
     `Interested: ${responseUrl('interested')}`,
     `Not interested: ${responseUrl('not_interested')}`,
@@ -53,18 +49,11 @@ export function renderEmail(campaign: Campaign, lead: Lead, token: string): Rend
   const ctaButton = (label: string, response: string, background: string) =>
     `<a href="${escapeHtml(responseUrl(response))}" style="display:inline-block;padding:11px 18px;margin:0 8px 8px 0;border-radius:8px;background:${background};color:#17200b;text-decoration:none;font-weight:600;font-size:13px;">${label}</a>`;
 
-  const deckBlock = deckUrl
-    ? `<p style="margin:24px 0 8px 0;"><a href="${escapeHtml(deckUrl)}" style="display:inline-block;padding:11px 18px;border-radius:8px;background:#171a17;color:#ffffff;text-decoration:none;font-weight:600;font-size:13px;">View the sales deck</a></p>`
-    : '';
-
   const html = `<!doctype html>
 <html lang="en">
   <body style="margin:0;padding:32px 16px;background:#f7f7f3;font-family:Inter,Arial,sans-serif;color:#171a17;">
     <table role="presentation" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #e4e7df;border-radius:12px;width:100%;">
-      <tr><td style="padding:28px 32px 0 32px;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#737a72;">Manufacturer outreach</td></tr>
-      <tr><td style="padding:16px 32px 0 32px;font-size:22px;font-weight:600;letter-spacing:-0.02em;">${escapeHtml(subject.value)}</td></tr>
-      <tr><td style="padding:20px 32px 0 32px;font-size:14px;line-height:1.6;color:#171a17;">${textToHtmlParagraphs(body.value)}</td></tr>
-      <tr><td style="padding:0 32px 8px 32px;">${deckBlock}</td></tr>
+      <tr><td style="padding:28px 32px 0 32px;font-size:14px;line-height:1.6;color:#171a17;">${textToHtmlParagraphs(body.value)}</td></tr>
       <tr><td style="padding:20px 32px 8px 32px;border-top:1px solid #e4e7df;font-size:13px;color:#737a72;">What would you like to do next?</td></tr>
       <tr><td style="padding:0 32px 24px 32px;">
         ${ctaButton('Interested', 'interested', '#b7e34a')}
@@ -81,7 +70,7 @@ export function renderEmail(campaign: Campaign, lead: Lead, token: string): Rend
   </body>
 </html>`;
 
-  return { subject: subject.value, body: body.value, text, html, unresolved, unsubscribeUrl };
+  return { subject: subject.value, body: body.value, text, html, unresolved, unsubscribeUrl, attachmentName };
 }
 
 export function createTransporter(): Transporter {
@@ -110,16 +99,28 @@ export function createTransporter(): Transporter {
 export async function deliverEmail(
   transporter: Transporter,
   rendered: RenderedEmail,
-  to: string
+  to: string,
+  attachment?: EmailAttachment
 ): Promise<{ messageId: string; response: string }> {
   const from = process.env.EMAIL_FROM;
   if (!from) throw new Error('EMAIL_FROM is not configured');
+  if (rendered.attachmentName && !attachment) {
+    throw new Error('The sales deck PDF must be attached before this email can be sent');
+  }
   const result = await transporter.sendMail({
     from,
     to,
     subject: rendered.subject,
     text: rendered.text,
     html: rendered.html,
+    attachments: attachment
+      ? [{
+          filename: attachment.filename,
+          content: attachment.content,
+          contentType: attachment.contentType,
+          contentDisposition: 'attachment'
+        }]
+      : [],
     headers: {
       'List-Unsubscribe': `<${rendered.unsubscribeUrl}>`,
       'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
